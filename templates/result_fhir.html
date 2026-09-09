@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block content %}
+<div class="card doc-header">
+  <span class="format-badge">FHIR</span>
+  <h2>{{ filename }}</h2>
+  <div class="stat-strip">
+    <span><b>{{ doc.resource_count }}</b> resource(s)</span>
+    {% if doc.bundle_type %}<span>Bundle type: <b>{{ doc.bundle_type }}</b></span>{% endif %}
+  </div>
+</div>
+
+<div class="app-toolbar no-print">
+  <div class="search-box">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" id="record-search" placeholder="Search these resources&hellip;" autocomplete="off">
+    <span id="search-count" class="search-count" hidden></span>
+    <button type="button" id="search-clear" class="search-clear" hidden title="Clear search" aria-label="Clear search">&times;</button>
+  </div>
+  <button type="button" class="toolbar-btn" id="print-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    Print / Save PDF
+  </button>
+</div>
+
+{% for r in doc.resources %}
+<div class="card resource-card">
+  <div class="resource-type">{{ r.resource_type }}{% if r.id %} &middot; {{ r.id }}{% endif %}</div>
+  <div class="resource-summary">{{ r.summary }}</div>
+  <details class="raw-details" open>
+    <summary>All fields</summary>
+    <div class="raw-tree">{{ m.render_json(r.raw) }}</div>
+  </details>
+</div>
+{% endfor %}
+
+<script>
+(function () {
+  const searchInput = document.getElementById('record-search');
+  const searchCount = document.getElementById('search-count');
+  const searchClear = document.getElementById('search-clear');
+  let searchMarks = [];
+
+  function clearSearchMarks() {
+    searchMarks.forEach(mark => {
+      const parent = mark.parentNode;
+      if (parent) { parent.replaceChild(document.createTextNode(mark.textContent), mark); parent.normalize(); }
+    });
+    searchMarks = [];
+  }
+
+  function highlightMatches(root, q) {
+    let count = 0;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) { return node.nodeValue.toLowerCase().includes(q) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; },
+    });
+    const targets = [];
+    let n;
+    while ((n = walker.nextNode())) targets.push(n);
+    targets.forEach(node => {
+      const text = node.nodeValue;
+      const lower = text.toLowerCase();
+      const frag = document.createDocumentFragment();
+      let last = 0, idx;
+      while ((idx = lower.indexOf(q, last)) !== -1) {
+        frag.appendChild(document.createTextNode(text.slice(last, idx)));
+        const mark = document.createElement('mark');
+        mark.className = 'search-hit';
+        mark.textContent = text.slice(idx, idx + q.length);
+        frag.appendChild(mark);
+        searchMarks.push(mark);
+        count++;
+        last = idx + q.length;
+      }
+      frag.appendChild(document.createTextNode(text.slice(last)));
+      node.parentNode.replaceChild(frag, node);
+    });
+    return count;
+  }
+
+  function runSearch(query) {
+    clearSearchMarks();
+    const q = query.trim().toLowerCase();
+    const cards = Array.from(document.querySelectorAll('.resource-card'));
+    if (!q) {
+      cards.forEach(c => c.classList.remove('search-no-match'));
+      searchCount.hidden = true;
+      searchClear.hidden = true;
+      return;
+    }
+    searchClear.hidden = false;
+    let totalHits = 0;
+    cards.forEach(card => {
+      const matches = card.textContent.toLowerCase().includes(q);
+      card.classList.toggle('search-no-match', !matches);
+      if (matches) totalHits += highlightMatches(card, q);
+    });
+    searchCount.hidden = false;
+    searchCount.textContent = totalHits + ' match' + (totalHits === 1 ? '' : 'es');
+  }
+
+  let searchDebounce;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => runSearch(searchInput.value), 150);
+  });
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    runSearch('');
+    searchInput.focus();
+  });
+
+  document.getElementById('print-btn').addEventListener('click', () => window.print());
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,1025 @@
+:root {
+  --paper: #FAF6EF;
+  --paper-2: #F1EADC;
+  --card: #FFFDF9;
+  --ink: #2E2A22;
+  --ink-soft: #6B6455;
+  --ink-faint: #9C9483;
+  --sage: #3F6C5C;
+  --sage-bg: #E3ECE6;
+  --sage-dark: #2E4F43;
+  --clay: #B5502E;
+  --clay-bg: #F5E4DB;
+  --line: #E4DBC9;
+  --line-strong: #D2C6AC;
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; }
+
+/* Defensive: guarantees the [hidden] attribute always wins over any other
+   display rule elsewhere in this file, regardless of selector specificity
+   (an ID-selector "display: flex" rule previously beat the browser's
+   built-in [hidden] rule, so all three dropzone states rendered stacked on
+   top of each other before any file was even chosen). */
+[hidden] { display: none !important; }
+
+#bg-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+header.topbar, main { position: relative; z-index: 1; }
+
+/* Inline icon SVGs (from icons.html) have no width/height of their own, so
+   without this they render at the browser's default intrinsic SVG size.
+   .upload-icon and .tab-icon set their own explicit size and win on
+   specificity, so they're unaffected by this default. */
+main svg { width: 20px; height: 20px; flex-shrink: 0; vertical-align: -4px; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: "Source Sans 3", -apple-system, "Segoe UI", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.55;
+  font-size: 16px;
+}
+
+/* The landing page is meant to read at a glance with no scrolling; result
+   pages are long by nature and scroll normally, so this is opt-in via
+   body_class rather than a global rule. */
+main.landing-main {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+/* Below 641px the 3-step strip stacks into a taller single column, so
+   forcing overflow:hidden there risks clipping instead of just scrolling --
+   the no-scroll treatment only kicks in on wider (desktop) viewports where
+   the fluid clamp() sizing above is enough to guarantee everything fits. */
+@media (min-width: 641px) {
+  body.no-scroll-page {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    /* Safety net, not the primary mechanism: the layout below is sized to
+       always fit, but if a future edit ever makes it slightly too tall,
+       this scrolls instead of silently clipping content off-screen the way
+       overflow:hidden did (that clipped the welcome-back banner once). */
+    overflow-y: auto;
+  }
+  main.landing-main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}
+
+.credit {
+  position: fixed;
+  right: 14px;
+  bottom: 10px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  background: var(--paper);
+  padding: 3px 8px;
+  border-radius: 999px;
+  z-index: 5;
+}
+.credit a { color: var(--ink-faint); text-decoration: underline; }
+.credit a:hover { color: var(--sage-dark); }
+
+h1, h2, h3, h4, .display {
+  font-family: "Outfit", "Source Sans 3", sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+a { color: var(--sage-dark); }
+
+/* ---------- top bar ---------- */
+header.topbar {
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  padding: 18px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+header.topbar .brand { display: flex; align-items: center; gap: 10px; }
+header.topbar .brand .mark {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--sage); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Outfit", sans-serif; font-weight: 700; font-size: 15px;
+}
+header.topbar h1 { font-size: 17px; margin: 0; }
+header.topbar a.nav-link {
+  color: var(--sage-dark); text-decoration: none; font-size: 14px; font-weight: 600;
+  border: 1px solid var(--line-strong); padding: 8px 16px; border-radius: 999px;
+}
+header.topbar a.nav-link:hover { background: var(--sage-bg); }
+
+main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(16px, 4vw, 40px) clamp(12px, 3vw, 24px) clamp(40px, 6vw, 80px);
+}
+main.narrow { max-width: 720px; }
+/* The results page needs real room for the 3-column masonry + TOC --
+   fluid width means it uses the screen instead of leaving large fixed
+   margins on wide monitors, while still capping at a sane reading width. */
+main.portal-main-page { max-width: min(1760px, 97vw); }
+.page-shell { max-width: 992px; margin: 0 auto; }
+
+/* ---------- last-visited banner ---------- */
+.welcome-back {
+  background: var(--sage-bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 12px 18px;
+  font-size: 14px;
+  color: var(--sage-dark);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.welcome-back a { color: var(--sage-dark); font-weight: 600; }
+
+/* ---------- portal-style results page: patient bar + masonry + TOC ---------- */
+.portal-view { max-width: 100%; margin: 0 auto; }
+
+.portal-patientbar {
+  background: linear-gradient(135deg, #E7E2FB, #DCD5F6);
+  border: 1px solid #C7BFEE;
+  border-radius: 12px;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.pb-chip { background: #fff; border: 1px solid #C7BFEE; border-radius: 8px; padding: 6px 12px; font-size: 13.5px; }
+.pb-chip b { color: #4B3F9E; margin-right: 6px; }
+.pb-detail-btn {
+  background: #4B3F9E; color: #fff; border: none; border-radius: 8px;
+  padding: 8px 16px; font-size: 13px; cursor: pointer; font-weight: 600;
+}
+.pb-detail-btn:hover { background: #3A3080; }
+
+.pb-glance { display: flex; flex-wrap: wrap; gap: 8px; }
+.pb-glance-chip {
+  background: color-mix(in srgb, var(--gc) 12%, #fff);
+  border: 1px solid var(--gc);
+  color: var(--gc);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-family: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pb-glance-chip:hover { background: var(--gc); color: #fff; }
+/* Fallback for browsers without color-mix() support: a plain tint. */
+@supports not (background: color-mix(in srgb, red 10%, white)) {
+  .pb-glance-chip { background: #fff; }
+}
+
+.pb-stats { margin-left: auto; font-size: 12.5px; color: #5B5490; white-space: nowrap; }
+
+/* ---- toolbar: search, timeline, print ---- */
+.app-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.search-box {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--ink-faint);
+}
+.search-box svg { width: 16px; height: 16px; flex-shrink: 0; }
+.search-box input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--ink);
+  min-width: 0;
+}
+.search-count { font-size: 11.5px; color: var(--ink-faint); white-space: nowrap; }
+.search-clear {
+  background: none; border: none; color: var(--ink-faint); cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 0 2px;
+}
+.search-clear:hover { color: var(--clay); }
+.toolbar-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--card); border: 1px solid var(--line-strong); color: var(--sage-dark);
+  border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.toolbar-btn svg { width: 15px; height: 15px; }
+.toolbar-btn:hover { background: var(--sage-bg); }
+
+/* Cards / sections hidden by an active search filter (not the same as the
+   user's own "hide card" toggle, kept as a separate class so the two never
+   fight over the same element). */
+.search-no-match { display: none; }
+mark.search-hit { background: #FFE58A; color: inherit; padding: 0 1px; border-radius: 2px; }
+
+/* ---- Timeline panel ---- */
+.timeline-panel {
+  position: fixed;
+  inset: 40px 16px 16px 16px;
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px -10px rgba(0, 0, 0, 0.4);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.timeline-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; background: var(--paper-2); border-bottom: 1px solid var(--line);
+  font-weight: 700; color: var(--sage-dark); font-size: 14.5px;
+}
+.timeline-list {
+  /* Without flex-grow + min-height:0, a flex column child sizes itself to
+     fit all its content instead of the space actually available, so it
+     never truly overflows itself -- overflow-y:auto then has nothing to
+     do, and the mouse wheel falls through to the page behind it. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 18px 18px;
+}
+.timeline-item {
+  display: grid; grid-template-columns: 96px 1fr; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+}
+.timeline-item:last-child { border-bottom: none; }
+.timeline-date { font-size: 12px; font-weight: 700; color: var(--ink-faint); white-space: nowrap; }
+.timeline-body { font-size: 13.5px; }
+.timeline-section-tag {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700;
+  color: var(--badge-color); margin-bottom: 2px;
+}
+.timeline-empty { color: var(--ink-faint); font-style: italic; padding: 20px 0; text-align: center; }
+
+/* ---- clinical heuristic flags (not medical advice -- name/date matches only) ---- */
+tr.row-abnormal td:first-child::before { content: "⚠ "; color: var(--clay); }
+tr.row-abnormal { background: color-mix(in srgb, var(--clay) 8%, transparent); }
+tr.row-overdue td:first-child::before { content: "⏰ "; }
+tr.row-overdue { background: color-mix(in srgb, var(--clay) 8%, transparent); }
+@supports not (background: color-mix(in srgb, red 10%, white)) {
+  tr.row-abnormal, tr.row-overdue { background: var(--clay-bg); }
+}
+.heuristic-banner {
+  background: var(--clay-bg); border: 1px solid #E3B49B; color: #7A3418;
+  border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin: 0 0 10px;
+}
+
+@media print {
+  .no-print, .toc-panel, .toc-toggle-btn, .card-resize-handle, .col-resize-handle,
+  .card-close, .toc-drag, .timeline-panel, header.topbar, .credit { display: none !important; }
+  .portal-main { columns: 1 !important; }
+  .portal-card { break-inside: avoid; box-shadow: none !important; border: 1px solid #ccc; resize: none !important; width: 100% !important; height: auto !important; overflow: visible !important; }
+  .section-body { display: block !important; }
+  .card, .resource-card, .segment-card { break-inside: avoid; box-shadow: none !important; border: 1px solid #ccc; }
+  /* Belt-and-suspenders: if the timeline modal was left open when print
+     fired, its own JS lock is undone on 'afterprint' anyway, but printing
+     itself should never be blocked by a scroll lock. */
+  body { background: #fff !important; overflow: visible !important; }
+}
+
+/* ---- "About This Patient" / "Care Team" stat tiles ---- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.stat-tile {
+  background: color-mix(in srgb, var(--badge-color) 6%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--badge-color) 22%, var(--line));
+  border-left: 3px solid var(--badge-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.stat-tile:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -6px rgba(46, 42, 34, 0.2); }
+.stat-tile.stat-wide { grid-column: 1 / -1; }
+.stat-label {
+  display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--badge-color); margin-bottom: 2px;
+}
+.stat-value { font-size: 13.5px; color: var(--ink); word-break: break-word; }
+@supports not (background: color-mix(in srgb, red 10%, white)) {
+  .stat-tile { background: var(--card); border-left-color: var(--badge-color); }
+}
+.role-pill {
+  display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px;
+  border-radius: 999px; background: color-mix(in srgb, var(--badge-color) 14%, #fff);
+  color: var(--badge-color);
+}
+@supports not (background: color-mix(in srgb, red 10%, white)) {
+  .role-pill { background: #fff; }
+}
+
+/* TOC used to be a grid column beside the cards; it's now a fixed drawer
+   docked to the right edge of the viewport (see .toc-panel below), so the
+   cards get the whole width to themselves. */
+.portal-layout { display: block; }
+
+.portal-main { columns: 4 340px; column-gap: clamp(10px, 1.6vw, 18px); }
+
+.portal-card {
+  position: relative;
+  break-inside: avoid;
+  width: 100%;
+  margin: 0 0 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(46, 42, 34, 0.04), 0 8px 20px -8px rgba(46, 42, 34, 0.12);
+  /* Custom handles (below) replace the native single-corner CSS `resize`
+     so width, height, and growing upward can each be dragged on their own
+     edge; overflow auto lets a shrunk card scroll its own content instead
+     of clipping it. */
+  overflow: auto;
+  min-width: 240px;
+  min-height: 130px;
+}
+.portal-card.card-resizing { z-index: 5; }
+
+.card-resize-handle { position: absolute; z-index: 3; }
+.card-resize-handle.crh-right { top: 0; right: 0; width: 8px; height: 100%; cursor: col-resize; }
+.card-resize-handle.crh-bottom { left: 0; bottom: 0; height: 8px; width: 100%; cursor: row-resize; }
+.card-resize-handle.crh-top { left: 0; top: 0; height: 8px; width: 100%; cursor: row-resize; }
+.card-resize-handle.crh-corner { right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+.card-resize-handle.crh-corner::after {
+  content: "";
+  position: absolute; right: 3px; bottom: 3px; width: 8px; height: 8px;
+  background:
+    linear-gradient(135deg, transparent 0 45%, var(--line-strong) 45% 55%, transparent 55% 100%),
+    linear-gradient(135deg, transparent 0 70%, var(--line-strong) 70% 80%, transparent 80% 100%);
+}
+.card-resize-handle.crh-right:hover, .card-resize-handle.crh-right.resizing,
+.card-resize-handle.crh-bottom:hover, .card-resize-handle.crh-bottom.resizing,
+.card-resize-handle.crh-top:hover, .card-resize-handle.crh-top.resizing {
+  background: color-mix(in srgb, var(--sage) 25%, transparent);
+}
+@supports not (background: color-mix(in srgb, red 10%, white)) {
+  .card-resize-handle.crh-right:hover, .card-resize-handle.crh-bottom:hover, .card-resize-handle.crh-top:hover { background: var(--sage-bg); }
+}
+/* Cards holding a data table get pulled out of the narrow masonry column
+   entirely (column-span: all) instead of being squeezed into ~320px --
+   that squeeze is what was clipping cell text at the card edge. Full card
+   width gives the table room to wrap normally with nothing hidden or cut. */
+.portal-card.has-table { column-span: all; }
+.portal-card.card-hidden { display: none; }
+.portal-card.empty { opacity: 0.65; }
+
+.portal-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--line);
+}
+.portal-badge {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  background: var(--badge-color);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 2px 6px -2px rgba(0, 0, 0, 0.25);
+}
+.portal-badge svg { width: 15px; height: 15px; }
+.portal-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  cursor: pointer;
+  flex: 1;
+  color: var(--badge-color);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.portal-card-head h3 .toggle-icon { font-size: 10px; color: var(--ink-faint); flex-shrink: 0; }
+.emoji-accent { font-size: 12.5px; }
+.portal-card-head .count-tag {
+  background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 1px 7px; font-size: 11px; color: var(--ink-soft); flex-shrink: 0;
+}
+.card-close {
+  background: none; border: none; font-size: 17px; line-height: 1;
+  color: var(--ink-faint); cursor: pointer; padding: 0 2px; flex-shrink: 0;
+}
+.card-close:hover { color: var(--clay); }
+
+.portal-card .section-body { padding: 9px 12px 11px; }
+.portal-card .original-title { padding: 0 12px; margin: 6px 0 0; font-size: 11.5px; }
+.portal-card .no-data-note { padding: 9px 12px 11px; margin: 0; font-size: 13px; }
+
+@media (max-width: 1500px) {
+  .portal-main { columns: 3 300px; }
+}
+@media (max-width: 1100px) {
+  .portal-main { columns: 2 280px; }
+}
+@media (max-width: 700px) {
+  .portal-main { columns: 1; }
+  .portal-patientbar { flex-direction: column; align-items: flex-start; }
+  .pb-stats { margin-left: 0; }
+  header.topbar { padding: 14px 16px; flex-wrap: wrap; gap: 8px; }
+  header.topbar h1 { font-size: 15px; }
+  .toc-panel { width: calc(100vw - 32px); right: 16px; }
+}
+
+/* ---- Table of Contents: fixed drawer docked to the right edge ---- */
+.toc-toggle-btn {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 21;
+  background: var(--sage);
+  color: #fff;
+  border: none;
+  border-radius: 10px 0 0 10px;
+  padding: 12px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  box-shadow: -2px 2px 10px -4px rgba(0, 0, 0, 0.3);
+  writing-mode: vertical-rl;
+}
+.toc-toggle-btn:hover { background: var(--sage-dark); }
+.toc-toggle-btn svg { width: 15px; height: 15px; writing-mode: horizontal-tb; }
+
+.toc-panel {
+  position: fixed;
+  top: 84px;
+  right: 16px;
+  width: 280px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+  box-shadow: 0 10px 30px -10px rgba(46, 42, 34, 0.3);
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+/* Hidden by default via inline-free class toggle so it degrades to "open"
+   if JS fails to load, rather than vanishing with no way to reopen it. */
+.toc-panel.toc-hidden {
+  transform: translateX(calc(100% + 24px));
+  opacity: 0;
+  pointer-events: none;
+}
+.toc-header { font-weight: 700; font-size: 14px; color: var(--sage-dark); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.toc-close-btn {
+  background: none; border: none; color: var(--ink-faint); cursor: pointer;
+  font-size: 18px; line-height: 1; padding: 0 2px;
+}
+.toc-close-btn:hover { color: var(--clay); }
+.toc-list { display: flex; flex-direction: column; gap: 4px; }
+.toc-row {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--sage); color: #fff;
+  border-radius: 8px; padding: 7px 8px;
+  font-size: 12.5px;
+  transition: box-shadow 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+}
+.toc-row.toc-row-hidden { background: var(--paper-2); color: var(--ink-faint); }
+/* SortableJS drag states */
+.toc-row.toc-row-ghost { opacity: 0.35; }
+.toc-row.toc-row-chosen { box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.35); transform: scale(1.02); }
+.toc-row.toc-row-drag { cursor: grabbing; }
+.toc-vis, .toc-drag {
+  background: rgba(255, 255, 255, 0.18); border: none; color: inherit; border-radius: 5px;
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0; padding: 0; font-size: 10px;
+}
+.toc-drag { cursor: grab; touch-action: none; }
+.toc-vis svg, .toc-drag svg { width: 12px; height: 12px; }
+.toc-row.toc-row-hidden .toc-vis svg { opacity: 0.3; }
+.toc-vis:hover, .toc-drag:hover { background: rgba(255, 255, 255, 0.35); }
+.toc-label { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.toc-label svg { width: 13px; height: 13px; flex-shrink: 0; }
+.toc-actions { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.toc-action-btn {
+  background: var(--sage-bg); color: var(--sage-dark); border: 1px solid var(--line-strong);
+  border-radius: 8px; padding: 7px 10px; font-size: 12px; cursor: pointer; font-weight: 600;
+}
+.toc-action-btn:hover { background: var(--sage); color: #fff; }
+
+/* ---------- flash ---------- */
+.flash {
+  background: var(--clay-bg);
+  border: 1px solid #E3B49B;
+  color: #7A3418;
+  padding: 14px 18px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  font-size: 14.5px;
+}
+
+/* ---------- entrance animation ---------- */
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.reveal {
+  animation: reveal-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--delay, 0) * 70ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { animation: none; }
+}
+
+/* ---------- landing page: two-column split so the side space (previously
+   just empty margin) does real work -- copy/steps on the left, the upload
+   panel on the right. Falls back to a single stacked column under 900px. */
+.landing-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(24px, 5vw, 64px);
+  align-items: center;
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+}
+.landing-left { text-align: left; }
+.landing-right { display: flex; align-items: center; }
+.landing-right .dropzone { width: 100%; margin: 0; }
+
+@media (max-width: 899px) {
+  .landing-split { grid-template-columns: 1fr; gap: 20px; }
+  .landing-left { text-align: center; }
+}
+
+/* ---------- vertical how-it-works (landing left column) ---------- */
+.how-it-works-v {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.6vh, 16px);
+  margin-top: clamp(12px, 2.5vh, 24px);
+}
+.step-v { display: flex; align-items: flex-start; gap: 12px; text-align: left; }
+.step-v .num {
+  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--sage-bg); color: var(--sage-dark);
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Outfit", sans-serif; font-weight: 700; font-size: 12px;
+  margin-top: 1px;
+}
+.step-v h4 { font-size: 14px; margin: 0 0 2px; }
+.step-v p { font-size: 12.5px; color: var(--ink-soft); margin: 0; line-height: 1.4; }
+@media (max-width: 899px) { .step-v { text-align: left; } }
+
+/* ---------- format badges ---------- */
+.format-badges {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.format-badges-left { justify-content: flex-start; margin-top: clamp(12px, 2.5vh, 22px); }
+@media (max-width: 899px) { .format-badges-left { justify-content: center; } }
+.format-badge-pill {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+/* ---------- upload hero ---------- */
+.hero {
+  padding: clamp(4px, 2vh, 24px) 0 clamp(2px, 1vh, 8px);
+}
+.hero h2 { font-size: clamp(24px, 3.4vh, 34px); margin: 0 0 clamp(6px, 1.2vh, 12px); }
+.hero p.lede { color: var(--ink-soft); font-size: clamp(13.5px, 1.8vh, 16px); max-width: 420px; margin: 0; }
+@media (max-width: 899px) {
+  .hero p.lede { margin: 0 auto; }
+}
+
+.dropzone {
+  background: var(--card);
+  border: 2px dashed var(--line-strong);
+  border-radius: 20px;
+  padding: clamp(16px, 4vh, 48px) 32px;
+  text-align: center;
+  margin: clamp(12px, 3vh, 32px) 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dropzone.dragover { border-color: var(--sage); background: var(--sage-bg); }
+.dropzone.scanning { border-style: solid; border-color: var(--sage); background: var(--sage-bg); }
+.dropzone .upload-icon { color: var(--sage); margin-bottom: clamp(4px, 1.5vh, 14px); width: clamp(28px, 4vh, 44px); height: clamp(28px, 4vh, 44px); animation: float-icon 2.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .dropzone .upload-icon { animation: none; }
+}
+@keyframes float-icon {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+#dropzone-scanning, #dropzone-uploading { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+.uploading-icon { color: var(--sage); margin-bottom: 10px; animation: float-icon 1.2s ease-in-out infinite; }
+.upload-progress {
+  width: 160px;
+  height: 6px;
+  background: var(--paper-2);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 10px 0 8px;
+}
+.upload-progress-bar {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--sage), var(--sage-dark));
+  border-radius: 999px;
+}
+
+.scan-frame {
+  position: relative;
+  width: 78px;
+  height: 96px;
+  margin: 0 auto 14px;
+  border: 2px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.dropzone.scanning .scan-frame,
+.dropzone.scan-done .scan-frame { border-color: var(--sage); }
+
+.doc-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: 100%;
+  padding: 0 12px;
+}
+.doc-lines span { display: block; height: 5px; border-radius: 3px; background: var(--line-strong); }
+.doc-lines span:nth-child(1) { width: 85%; }
+.doc-lines span:nth-child(2) { width: 100%; }
+.doc-lines span:nth-child(3) { width: 65%; }
+.doc-lines span:nth-child(4) { width: 92%; }
+.doc-lines span:nth-child(5) { width: 55%; }
+.scan-frame.sweep-done .doc-lines { opacity: 0; transition: opacity 0.25s; }
+.scan-frame:not(.sweep-done) .doc-lines { opacity: 1; }
+
+.scan-line {
+  position: absolute;
+  left: 0; right: 0;
+  top: -18px;
+  height: 18px;
+  background: linear-gradient(180deg, transparent, rgba(63, 108, 92, 0.28) 45%, var(--sage) 85%, var(--sage));
+  border-bottom: 2px solid var(--sage);
+  box-shadow: 0 0 10px rgba(63, 108, 92, 0.5);
+  /* Loops continuously for as long as .scanning is applied -- the JS scan
+     timer (not this duration) decides the total scan length, so a 5-second
+     scan gets ~4 passes instead of sweeping once and then sitting frozen. */
+  animation: scan-sweep-loop 1.3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.dropzone:not(.scanning) .scan-line { display: none; }
+@keyframes scan-sweep-loop {
+  0% { top: -18px; }
+  90%, 100% { top: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scan-line { animation-duration: 1.4s; }
+}
+
+.scan-check {
+  position: absolute;
+  color: var(--sage);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.scan-check:not([hidden]) { opacity: 1; transform: scale(1); }
+
+.scan-status { color: var(--ink-soft); font-size: 13.5px; margin: 2px 0 14px; }
+#ready-btn { margin-top: 2px; }
+.dropzone .file-name { font-weight: 600; color: var(--sage-dark); margin-top: 10px; font-size: 14px; }
+.dropzone label.browse {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 14.5px;
+  color: var(--sage-dark);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.dropzone input[type="file"] { display: none; }
+
+.btn-primary {
+  background: var(--sage);
+  color: #fff;
+  border: none;
+  padding: clamp(10px, 1.6vh, 14px) 34px;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: "Outfit", sans-serif;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-primary:hover { background: var(--sage-dark); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------- generic card (base for doc-header/about/segment/resource cards) --- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 2px rgba(46, 42, 34, 0.04), 0 10px 26px -8px rgba(46, 42, 34, 0.10);
+}
+
+/* ---------- card hover: shadow lift only, no scale/tilt/zoom ---------- */
+.portal-card { transition: box-shadow 0.2s ease-out; }
+.portal-card:hover {
+  box-shadow: 0 2px 4px rgba(46, 42, 34, 0.06), 0 20px 40px -12px rgba(46, 42, 34, 0.18);
+}
+
+/* ---------- drag-to-reorder cards directly in the masonry ---------- */
+.portal-card-head { cursor: grab; }
+.portal-card-head button, .portal-card-head h3 { cursor: pointer; }
+.portal-card.card-ghost { opacity: 0.35; }
+.portal-card.card-chosen { box-shadow: 0 10px 26px -8px rgba(46, 42, 34, 0.35); }
+.portal-card.card-drag { cursor: grabbing; }
+
+/* ---------- scroll reveal: section cards animate in as they enter view --- */
+.reveal-card {
+  opacity: 0;
+  transform: translateY(22px) scale(0.985);
+  transition: opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1), transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-card.in-view { opacity: 1; transform: translateY(0) scale(1); }
+
+/* ---------- doc header on results ---------- */
+.doc-header {
+  padding: 26px 28px;
+  margin-bottom: 22px;
+}
+.format-badge {
+  display: inline-block;
+  background: var(--sage-bg);
+  color: var(--sage-dark);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.doc-header h2 { margin: 8px 0 4px; font-size: 26px; }
+.doc-header .subline { color: var(--ink-soft); font-size: 14.5px; }
+
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.stat-pill {
+  background: var(--paper-2);
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+.stat-pill b { color: var(--ink); font-family: "Outfit", sans-serif; }
+
+/* ---------- about-you card ---------- */
+.about-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px 28px; margin-bottom: 22px; }
+.about-card h3 { font-size: 16px; margin: 0 0 16px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 20px; }
+.summary-grid .field label { display: block; font-size: 11.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+.summary-grid .field .val { font-size: 15px; }
+
+.providers-card table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.providers-card td, .providers-card th { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+.providers-card th { color: var(--ink-faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }
+
+
+.section-body { display: none; }
+.section-body.open { display: block; }
+
+.table-scroll {
+  overflow-x: auto;
+  margin: 6px 0 4px;
+  -webkit-overflow-scrolling: touch;
+}
+table.narrative-table {
+  border-collapse: collapse;
+  /* Fixed layout forces every column to stay inside the table's own width
+     instead of the browser expanding columns past the container to fit
+     unwrapped content -- that expansion (invisible unless you scrolled the
+     wrapper) is what was cutting cell text off at the card edge. */
+  table-layout: fixed;
+  width: 100%;
+  margin: 0;
+  font-size: 13.5px;
+}
+table.narrative-table th, table.narrative-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 9px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+table.narrative-table th { position: relative; }
+/* Drag handle on the right edge of each header cell -- lets a user shrink
+   or widen individual columns to fit the page instead of being stuck with
+   whatever width table-layout:fixed picked automatically. */
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+}
+.col-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  left: 3px;
+  width: 2px;
+  background: var(--line-strong);
+  border-radius: 1px;
+}
+.col-resize-handle:hover::after,
+.col-resize-handle.resizing::after {
+  background: var(--sage);
+}
+table.narrative-table th { color: var(--ink-faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }
+table.narrative-table tr:last-child td { border-bottom: none; }
+
+.paragraph { font-size: 13.5px; color: var(--ink); margin: 5px 0; line-height: 1.45; }
+
+.no-data-note { color: var(--ink-faint); font-size: 14px; font-style: italic; }
+
+.group-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 16px 0 4px;
+  padding: 2px 0;
+}
+.group-label.group-active { color: var(--sage-dark); }
+.group-label.group-other { color: var(--ink-faint); }
+.group-label:first-child { margin-top: 4px; }
+
+.relation-card {
+  background: var(--sage-bg);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+.relation-note { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+
+/* ---------- vitals sparkline charts (built client-side from the table) --- */
+.chart-strip {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 16px;
+  scrollbar-width: thin;
+}
+.chart-card {
+  flex: 0 0 auto;
+  width: 220px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px 6px;
+}
+.chart-card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 2px; }
+.chart-label { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+.chart-latest { font-family: "Outfit", sans-serif; font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 4px; }
+.chart-trend { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; }
+.chart-trend.trend-up { border-bottom: 6px solid var(--clay); }
+.chart-trend.trend-down { border-top: 6px solid var(--sage); }
+.chart-trend.trend-flat { display: none; }
+.sparkline { width: 100%; height: 44px; display: block; }
+.spark-path { fill: none; stroke: var(--sage-dark); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.spark-dot { fill: var(--sage-dark); }
+
+/* ---------- technical details toggle ---------- */
+.tech-toggle {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--sage-dark);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  user-select: none;
+}
+.tech-toggle:hover { text-decoration: underline; }
+.tech-panel { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.tech-panel.open { display: block; }
+
+.entry-list { list-style: none; margin: 0; padding: 0; }
+.entry-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: var(--paper-2);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12.5px;
+}
+.fact-row { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 3px 0; border-bottom: 1px dashed var(--line-strong); }
+.fact-row:last-child { border-bottom: none; }
+.fact-row .fact-type { color: var(--ink-faint); text-transform: uppercase; min-width: 80px; }
+.fact-row .fact-label { font-weight: 600; }
+.fact-row.negated { background: var(--clay-bg); border-radius: 6px; padding: 4px 8px; }
+.fact-row.negated .fact-label { color: var(--clay); }
+.fact-tag { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--ink-soft); }
+
+.subsection { margin-left: 14px; margin-top: 14px; }
+
+/* ---------- generic raw tree (HL7 / FHIR) ---------- */
+.raw-tree { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; }
+.raw-tree ul { list-style: none; padding-left: 18px; margin: 2px 0; }
+.raw-tree li { padding: 1px 0; }
+.raw-tree .key { color: var(--sage-dark); font-weight: 600; }
+.raw-tree .scalar { color: var(--ink); }
+
+.resource-card .resource-type { font-size: 11.5px; color: var(--sage-dark); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.resource-card .resource-summary { font-size: 17px; font-family: "Outfit", sans-serif; font-weight: 600; margin: 3px 0 12px; }
+
+details.raw-details summary { cursor: pointer; font-size: 12.5px; color: var(--ink-faint); margin-top: 8px; }
+
+.segment-card { margin-bottom: 14px; }
+.segment-id {
+  display: inline-block; background: var(--sage); color: #fff;
+  padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; margin-right: 8px;
+  font-family: "Outfit", sans-serif;
+}
+
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+}

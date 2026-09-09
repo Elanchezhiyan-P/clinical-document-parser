@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Health Record Reader{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Tailwind is layered on top of the existing hand-tuned design system
+    // purely for utility classes (spacing, transitions, responsive tweaks)
+    // on new markup -- preflight is off so it never resets the fonts/colors
+    // style.css already controls.
+    tailwind.config = { corePlugins: { preflight: false } };
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <header class="topbar">
+    <a href="{{ url_for('index') }}" style="text-decoration:none;">
+      <div class="brand">
+        <div class="mark">H</div>
+        <h1>Health Record Reader</h1>
+      </div>
+    </a>
+    <a href="{{ url_for('index') }}" class="nav-link">Read another file</a>
+  </header>
+  <main class="{% block main_class %}{% endblock %}">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <div class="credit">Built by Elanchezhiyan P &middot; <a href="https://codebyelan.in" target="_blank" rel="noopener">codebyelan.in</a></div>
+
+  <script>
+    function toggleSection(id) {
+      const body = document.getElementById(id);
+      const icon = document.getElementById(id + '-icon');
+      body.classList.toggle('open');
+      if (icon) icon.textContent = body.classList.contains('open') ? '▾' : '▸';
+    }
+    function toggleTech(id) {
+      const panel = document.getElementById(id);
+      panel.classList.toggle('open');
+      const label = document.getElementById(id + '-label');
+      if (label) label.textContent = panel.classList.contains('open') ? 'Hide medical codes' : 'Show medical codes';
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.section-body').forEach(el => el.classList.add('open'));
+      document.querySelectorAll('.toggle-icon').forEach(el => el.textContent = '▾');
+    });
+
+    // Force every collapsed <details> open for the duration of printing
+    // (Ctrl+P or a page's own print button both fire these events) so
+    // collapsed technical sections aren't silently missing from the PDF,
+    // then restore whatever the user actually had open/closed.
+    let detailsOpenBeforePrint = null;
+    window.addEventListener('beforeprint', () => {
+      detailsOpenBeforePrint = Array.from(document.querySelectorAll('details')).map(d => d.open);
+      document.querySelectorAll('details').forEach(d => { d.open = true; });
+    });
+    window.addEventListener('afterprint', () => {
+      if (!detailsOpenBeforePrint) return;
+      document.querySelectorAll('details').forEach((d, i) => { d.open = detailsOpenBeforePrint[i]; });
+      detailsOpenBeforePrint = null;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block body_class %}no-scroll-page{% endblock %}
+{% block main_class %}landing-main{% endblock %}
+{% block content %}
+<canvas id="bg-canvas"></canvas>
+{% if last_visit %}
+<div class="welcome-back reveal" style="--delay:0">
+  <span>Welcome back &mdash; you last viewed <b>{{ last_visit.filename }}</b> ({{ last_visit.format_label }}) on {{ last_visit.viewed_at }}. We don't keep a copy, so upload it again to see it.</span>
+</div>
+{% endif %}
+
+<div class="landing-split">
+  <div class="landing-left">
+    <div class="hero reveal" style="--delay:1">
+      <h2>See your health record in plain language</h2>
+      <p class="lede">Upload the file your clinic or hospital gave you, and we'll lay out everything in it &mdash; conditions, medications, lab results, and more &mdash; in a way that's easy to read.</p>
+    </div>
+
+    <div class="how-it-works-v reveal" style="--delay:2">
+      <div class="step-v">
+        <div class="num">1</div>
+        <div><h4>Upload your file</h4><p>The record your doctor's office, hospital, or lab gave you &mdash; any format works.</p></div>
+      </div>
+      <div class="step-v">
+        <div class="num">2</div>
+        <div><h4>We scan it for you</h4><p>Watch it scan in a couple seconds, then tap one button when you're ready.</p></div>
+      </div>
+      <div class="step-v">
+        <div class="num">3</div>
+        <div><h4>You see it clearly</h4><p>Conditions, medications, and labs laid out in plain, readable sections.</p></div>
+      </div>
+    </div>
+
+    <div class="format-badges format-badges-left reveal" style="--delay:3">
+      <span class="format-badge-pill">XML &middot; C-CDA</span>
+      <span class="format-badge-pill">JSON &middot; FHIR</span>
+      <span class="format-badge-pill">XML &middot; FHIR</span>
+      <span class="format-badge-pill">.hl7 &middot; HL7 v2</span>
+    </div>
+  </div>
+
+  <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" id="upload-form" class="landing-right reveal" style="--delay:2">
+    <div class="dropzone" id="dropzone">
+      <div id="dropzone-idle">
+        <svg class="upload-icon" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4"/>
+          <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+        </svg>
+        <div>
+          <strong>Drag your file here</strong>
+          <div>or <label class="browse" for="file-input">choose a file from your computer</label></div>
+        </div>
+        <input type="file" name="document" id="file-input" accept=".xml,.hl7,.txt,.json" required>
+        <button type="submit" class="btn-primary js-only-hide" id="submit-btn" disabled>Show me my record</button>
+      </div>
+      <div id="dropzone-uploading" hidden>
+        <svg class="upload-icon uploading-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4"/>
+          <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+        </svg>
+        <strong id="upload-filename"></strong>
+        <div class="upload-progress"><div class="upload-progress-bar" id="upload-progress-bar"></div></div>
+        <div class="scan-status">Uploading&hellip;</div>
+      </div>
+      <div id="dropzone-scanning" hidden>
+        <div class="scan-frame" id="scan-frame">
+          <div class="doc-lines">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div class="scan-line" id="scan-line"></div>
+          <svg class="scan-check" id="scan-check" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" hidden>
+            <path d="M20 6 9 17l-5-5"/>
+          </svg>
+        </div>
+        <strong id="scan-filename"></strong>
+        <div class="scan-status" id="scan-status">Scanning your file&hellip;</div>
+        <button type="button" class="btn-primary" id="ready-btn" hidden>Ready to view &mdash; see my record</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  const dz = document.getElementById('dropzone');
+  const input = document.getElementById('file-input');
+  const form = document.getElementById('upload-form');
+  const idleView = document.getElementById('dropzone-idle');
+  const uploadingView = document.getElementById('dropzone-uploading');
+  const uploadFilename = document.getElementById('upload-filename');
+  const uploadProgressBar = document.getElementById('upload-progress-bar');
+  const scanView = document.getElementById('dropzone-scanning');
+  const scanFilename = document.getElementById('scan-filename');
+  const scanStatus = document.getElementById('scan-status');
+  const scanFrame = document.getElementById('scan-frame');
+  const scanLine = document.getElementById('scan-line');
+  const scanCheck = document.getElementById('scan-check');
+  const readyBtn = document.getElementById('ready-btn');
+  const submitBtn = document.getElementById('submit-btn');
+
+  document.querySelectorAll('.js-only-hide').forEach(el => el.style.display = 'none');
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const UPLOAD_DURATION_MS = reducedMotion ? 500 : 1000;
+  const SCAN_DURATION_MS = reducedMotion ? 1800 : 5000;
+  const SCAN_MESSAGES = [
+    'Scanning your file…',
+    'Reading through every section…',
+    'Finding your conditions and medications…',
+    'Organizing your lab results…',
+    'Almost done…',
+  ];
+  let scanMessageTimer = null;
+
+  function runUploadStage(file) {
+    idleView.hidden = true;
+    uploadingView.hidden = false;
+    scanView.hidden = true;
+    uploadFilename.textContent = file.name;
+    uploadProgressBar.style.transition = 'none';
+    uploadProgressBar.style.width = '0%';
+    // Force reflow so the width reset above applies before the transition
+    // below starts -- otherwise the browser can coalesce both style writes
+    // into one paint and the bar never visibly animates from 0.
+    uploadProgressBar.offsetWidth;
+    uploadProgressBar.style.transition = `width ${UPLOAD_DURATION_MS}ms ease-out`;
+    uploadProgressBar.style.width = '100%';
+
+    setTimeout(() => runScanStage(file), UPLOAD_DURATION_MS);
+  }
+
+  function runScanStage(file) {
+    uploadingView.hidden = true;
+    scanView.hidden = false;
+    readyBtn.hidden = true;
+    scanCheck.hidden = true;
+    dz.classList.remove('scan-done');
+    dz.classList.add('scanning');
+    scanFrame.classList.remove('sweep-done');
+    // Restart the CSS animation from frame 0 (re-triggering a class toggle
+    // doesn't restart an already-applied animation on its own).
+    scanLine.style.animation = 'none';
+    scanLine.offsetHeight; // force reflow
+    scanLine.style.animation = '';
+
+    scanFilename.textContent = file.name;
+    let messageIndex = 0;
+    scanStatus.textContent = SCAN_MESSAGES[0];
+    clearInterval(scanMessageTimer);
+    scanMessageTimer = setInterval(() => {
+      messageIndex = Math.min(messageIndex + 1, SCAN_MESSAGES.length - 1);
+      scanStatus.textContent = SCAN_MESSAGES[messageIndex];
+    }, SCAN_DURATION_MS / SCAN_MESSAGES.length);
+
+    setTimeout(() => {
+      clearInterval(scanMessageTimer);
+      scanFrame.classList.add('sweep-done');
+      dz.classList.remove('scanning');
+      dz.classList.add('scan-done');
+      scanCheck.hidden = false;
+      scanStatus.textContent = 'All set — ' + file.name + ' is ready.';
+      readyBtn.hidden = false;
+      readyBtn.focus();
+    }, SCAN_DURATION_MS);
+  }
+
+  function handleFile(file) {
+    if (file) runUploadStage(file);
+  }
+
+  readyBtn.addEventListener('click', () => form.submit());
+
+  input.addEventListener('change', () => handleFile(input.files[0]));
+
+  ['dragenter', 'dragover'].forEach(evt =>
+    dz.addEventListener(evt, e => { e.preventDefault(); dz.classList.add('dragover'); })
+  );
+  ['dragleave', 'drop'].forEach(evt =>
+    dz.addEventListener(evt, e => { e.preventDefault(); dz.classList.remove('dragover'); })
+  );
+  dz.addEventListener('drop', e => {
+    if (e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      handleFile(input.files[0]);
+    }
+  });
+</script>
+
+<script type="module">
+  // Ambient decorative background -- purely atmospheric, never blocks or
+  // competes with the actual content (pointer-events off, low opacity,
+  // skipped entirely under reduced-motion, and any load/runtime failure
+  // here is caught so the page works normally without it).
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    try {
+      const THREE = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
+      const canvas = document.getElementById('bg-canvas');
+      const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.z = 9;
+
+      const COUNT = 140;
+      const positions = new Float32Array(COUNT * 3);
+      const colors = new Float32Array(COUNT * 3);
+      const sage = new THREE.Color(0x3f6c5c);
+      const clay = new THREE.Color(0xb5502e);
+      for (let i = 0; i < COUNT; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 22;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 14;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 10;
+        const c = Math.random() < 0.82 ? sage : clay;
+        colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      const material = new THREE.PointsMaterial({
+        size: 0.09, vertexColors: true, transparent: true, opacity: 0.4,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const points = new THREE.Points(geometry, material);
+      scene.add(points);
+
+      let mouseX = 0, mouseY = 0;
+      window.addEventListener('mousemove', (e) => {
+        mouseX = (e.clientX / window.innerWidth - 0.5);
+        mouseY = (e.clientY / window.innerHeight - 0.5);
+      });
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      const clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+        points.rotation.y = t * 0.02 + mouseX * 0.15;
+        points.rotation.x = mouseY * 0.1;
+        points.position.y = Math.sin(t * 0.15) * 0.3;
+        renderer.render(scene, camera);
+      }
+      animate();
+    } catch (err) {
+      // No network / WebGL unavailable -- the page is fully usable without
+      // this, so just leave the plain paper background in place.
+      console.debug('Ambient background skipped:', err);
+    }
+  }
+</script>
+{% endblock %}

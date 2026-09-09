@@ -1,0 +1,21 @@
+{% macro render_json(value) %}
+  {% if value is mapping %}
+    <ul>
+      {% for k, v in value.items() %}
+        <li><span class="key">{{ k }}:</span> {{ render_json(v) }}</li>
+      {% endfor %}
+    </ul>
+  {% elif value is sequence and value is not string %}
+    {% if value|length == 0 %}
+      <span class="scalar">[]</span>
+    {% else %}
+      <ul>
+        {% for item in value %}
+          <li>{{ render_json(item) }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% else %}
+    <span class="scalar">{{ value if value is not none else '&mdash;' }}</span>
+  {% endif %}
+{% endmacro %}

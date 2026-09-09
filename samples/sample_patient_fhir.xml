@@ -1,0 +1,9 @@
+<Patient xmlns="http://hl7.org/fhir">
+  <id value="pt-2"/>
+  <name>
+    <family value="Smith"/>
+    <given value="Jane"/>
+  </name>
+  <gender value="female"/>
+  <birthDate value="1975-06-20"/>
+</Patient>

@@ -1,0 +1,44 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "pt-1",
+        "name": [{"family": "Doe", "given": ["John", "A"]}],
+        "gender": "male",
+        "birthDate": "1980-01-15",
+        "address": [{"line": ["123 Main St"], "city": "Springfield", "state": "IL", "postalCode": "62704"}]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "id": "cond-1",
+        "subject": {"reference": "Patient/pt-1"},
+        "code": {"coding": [{"system": "http://snomed.info/sct", "code": "44054006", "display": "Type 2 diabetes mellitus"}], "text": "Type 2 diabetes mellitus"},
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+        "onsetDateTime": "2020-03-10"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Observation",
+        "id": "obs-1",
+        "status": "final",
+        "code": {"coding": [{"system": "http://loinc.org", "code": "718-7", "display": "Hemoglobin"}]},
+        "valueQuantity": {"value": 14.2, "unit": "g/dL"},
+        "effectiveDateTime": "2026-08-27"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "id": "al-1",
+        "code": {"coding": [{"display": "Penicillin"}]},
+        "reaction": [{"manifestation": [{"text": "Anaphylaxis"}], "severity": "severe"}]
+      }
+    }
+  ]
+}

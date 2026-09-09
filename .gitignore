@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Uploaded files are never meant to be committed (may contain real patient data)
+uploads/*
+!uploads/.gitkeep
+
+.venv/
+venv/
+env/
+
+.env
+
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/

@@ -1,0 +1,930 @@
+{% extends "base.html" %}
+{% import "icons.html" as icons %}
+{% block main_class %}portal-main-page{% endblock %}
+{% block content %}
+<div class="portal-view">
+
+{% macro active_count(section) %}{% if section %}{% set ns = namespace(total=0) %}{% for t in section.narrative.tables %}{% if t.status_col_index is not none %}{% set ns.total = ns.total + (t.active_rows | length) %}{% else %}{% set ns.total = ns.total + (t.rows | length) %}{% endif %}{% endfor %}{{ ns.total }}{% else %}0{% endif %}{% endmacro %}
+
+{% set allergy_section = doc.sections | selectattr('icon', 'equalto', 'allergy') | list | first %}
+{% set condition_section = doc.sections | selectattr('icon', 'equalto', 'condition') | list | first %}
+{% set medication_section = doc.sections | selectattr('icon', 'equalto', 'medication') | list | first %}
+{% set allergy_n = active_count(allergy_section) | trim | int(0) %}
+{% set condition_n = active_count(condition_section) | trim | int(0) %}
+{% set medication_n = active_count(medication_section) | trim | int(0) %}
+{% set allergy_anchor = 'sec-' ~ (doc.sections.index(allergy_section) + 1) ~ '-anchor' if allergy_section else '' %}
+{% set condition_anchor = 'sec-' ~ (doc.sections.index(condition_section) + 1) ~ '-anchor' if condition_section else '' %}
+{% set medication_anchor = 'sec-' ~ (doc.sections.index(medication_section) + 1) ~ '-anchor' if medication_section else '' %}
+
+<div class="portal-patientbar">
+  <span class="pb-chip"><b>Patient</b> {{ doc.demographics.names[0] if doc.demographics.names else (doc.document_title or filename) }}</span>
+  <span class="pb-chip"><b>D.O.B</b> {{ doc.demographics.birth_date or '—' }}{% if doc.demographics.age is not none %} ({{ doc.demographics.age }} yrs){% endif %}</span>
+  <span class="pb-chip"><b>Sex</b> {{ doc.demographics.gender or '—' }}</span>
+  <button type="button" class="pb-detail-btn" onclick="document.getElementById('about-anchor').scrollIntoView({behavior:'smooth', block:'start'})">Patient Detail</button>
+
+  <span class="pb-glance">
+    {% if allergy_n > 0 %}<button type="button" class="pb-glance-chip" data-jump="{{ allergy_anchor }}" style="--gc: {{ icons.icon_color('allergy') }}">{{ icons.icon_emoji('allergy') }} {{ allergy_n }} allerg{{ 'y' if allergy_n == 1 else 'ies' }}</button>{% endif %}
+    {% if condition_n > 0 %}<button type="button" class="pb-glance-chip" data-jump="{{ condition_anchor }}" style="--gc: {{ icons.icon_color('condition') }}">{{ icons.icon_emoji('condition') }} {{ condition_n }} active condition{{ 's' if condition_n != 1 else '' }}</button>{% endif %}
+    {% if medication_n > 0 %}<button type="button" class="pb-glance-chip" data-jump="{{ medication_anchor }}" style="--gc: {{ icons.icon_color('medication') }}">{{ icons.icon_emoji('medication') }} {{ medication_n }} active medication{{ 's' if medication_n != 1 else '' }}</button>{% endif %}
+  </span>
+
+  <span class="pb-stats">{{ doc.section_count }} topics &middot; {{ doc.total_entries }} recorded details</span>
+</div>
+
+<div class="app-toolbar no-print">
+  <div class="search-box">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" id="record-search" placeholder="Search this record&hellip; (medications, labs, dates&hellip;)" autocomplete="off">
+    <span id="search-count" class="search-count" hidden></span>
+    <button type="button" id="search-clear" class="search-clear" hidden title="Clear search" aria-label="Clear search">&times;</button>
+  </div>
+  <button type="button" class="toolbar-btn" id="timeline-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+    Timeline
+  </button>
+  <button type="button" class="toolbar-btn" id="print-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    Print / Save PDF
+  </button>
+</div>
+
+<div class="timeline-panel" id="timeline-panel" hidden>
+  <div class="timeline-panel-head">
+    <span><span class="emoji-accent">&#128337;</span> Timeline &mdash; every dated entry in this record, newest first</span>
+    <button type="button" class="toc-close-btn" id="timeline-close-btn" title="Close timeline" aria-label="Close timeline">&times;</button>
+  </div>
+  <div class="timeline-list" id="timeline-list" data-lenis-prevent></div>
+</div>
+
+{% macro status_table(headers, rows, status_col) %}
+<div class="table-scroll">
+<table class="narrative-table">
+  {% if headers %}<thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>{% endif %}
+  <tbody>
+    {% for row in rows %}
+    <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
+{% macro render_section(section, uid) %}
+{% set item_count = section.entries | length if section.entries else (section.narrative.tables | map(attribute='rows') | map('length') | sum) %}
+{% set is_empty = not section.narrative.tables and not section.narrative.paragraphs and not section.entries and not section.subsections %}
+<div class="portal-card reveal-card {{ 'empty' if is_empty else '' }}" id="{{ uid }}-anchor" data-icon="{{ section.icon }}">
+  <div class="portal-card-head" style="--badge-color: {{ icons.icon_color(section.icon) }}">
+    <span class="portal-badge">{{ icons.icon(section.icon) }}</span>
+    <h3 onclick="toggleSection('{{ uid }}')"><span class="toggle-icon" id="{{ uid }}-icon">▾</span> {{ section.friendly_title }} <span class="emoji-accent">{{ icons.icon_emoji(section.icon) }}</span></h3>
+    {% if item_count > 0 %}<span class="count-tag">{{ item_count }}</span>{% endif %}
+    <button type="button" class="card-close" title="Hide this card" aria-label="Hide this card" onclick="hideCard('{{ uid }}-anchor')">&times;</button>
+  </div>
+  {% if section.friendly_title != section.title %}
+  <div class="original-title">Called "{{ section.title }}" in the original file</div>
+  {% endif %}
+
+  <div class="section-body open" id="{{ uid }}">
+    {% if is_empty %}
+      <p class="no-data-note">Nothing was recorded in this part of your file.</p>
+    {% endif %}
+
+    {% if section.icon == 'vitals' %}
+      <div class="vitals-charts" id="{{ uid }}-charts"></div>
+    {% endif %}
+
+    {% for table in section.narrative.tables %}
+      {% if table.status_col_index is not none %}
+        {% if table.active_rows %}
+          <div class="group-label group-active">Active ({{ table.active_rows | length }})</div>
+          {{ status_table(table.headers, table.active_rows, table.status_col_index) }}
+        {% endif %}
+        {% if table.other_rows %}
+          <div class="group-label group-other">Not Currently Active ({{ table.other_rows | length }})</div>
+          {{ status_table(table.headers, table.other_rows, table.status_col_index) }}
+        {% endif %}
+      {% elif table.rows %}
+        {{ status_table(table.headers, table.rows, none) }}
+      {% endif %}
+    {% endfor %}
+
+    {% for p in section.narrative.paragraphs %}
+      <div class="paragraph">{{ p }}</div>
+    {% endfor %}
+
+    {% if section.diagnosis_links %}
+      <div style="margin-top:14px;">
+        {% for d in section.diagnosis_links %}
+        <div class="paragraph relation-card">
+          <b>{{ d.name }}</b>
+          {% if d.linked_medications %} &mdash; treated with {{ d.linked_medications | join(', ') }}{% endif %}
+          {% if d.linked_labs %} &middot; monitored by {{ d.linked_labs | join(', ') }}{% endif %}
+          {% if d.suggested_labs %}
+            <div class="relation-note">Labs in your file commonly linked to this condition: {{ d.suggested_labs | join(', ') }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if section.entries %}
+      <div class="tech-toggle" onclick="toggleTech('{{ uid }}-tech')">
+        <span id="{{ uid }}-tech-label">Show medical codes</span>
+      </div>
+      <div class="tech-panel" id="{{ uid }}-tech">
+        <ul class="entry-list">
+          {% for entry in section.entries %}
+            <li class="entry-item">
+              {% for fact in entry %}
+              <div class="fact-row {{ 'negated' if fact.negated else '' }}">
+                <span class="fact-type">{{ fact.type }}</span>
+                <span class="fact-label">{{ fact.label }}{% if fact.negated %} (negated){% endif %}</span>
+                {% if fact.value %}<span>= {{ fact.value }}</span>{% endif %}
+                {% if fact.code %}<span class="fact-tag">{{ fact.code }}{% if fact.code_system_name %} · {{ fact.code_system_name }}{% endif %}</span>{% endif %}
+                {% if fact.status %}<span class="fact-tag">status: {{ fact.status }}</span>{% endif %}
+                {% if fact.date %}<span class="fact-tag">{{ fact.date }}</span>{% endif %}
+              </div>
+              {% endfor %}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    {% for sub in section.subsections %}
+      <div class="subsection">
+        {{ render_section(sub, uid ~ '-' ~ loop.index) }}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+<div class="portal-layout">
+  <div class="portal-main" id="portal-main">
+    <div class="portal-card reveal-card" id="about-anchor" data-icon="about">
+      <div class="portal-card-head" style="--badge-color: {{ icons.icon_color('about') }}">
+        <span class="portal-badge">{{ icons.icon('about') }}</span>
+        <h3 onclick="toggleSection('about')"><span class="toggle-icon" id="about-icon">▾</span> About This Patient <span class="emoji-accent">{{ icons.icon_emoji('about') }}</span></h3>
+        <button type="button" class="card-close" title="Hide this card" aria-label="Hide this card" onclick="hideCard('about-anchor')">&times;</button>
+      </div>
+      <div class="section-body open" id="about" style="--badge-color: {{ icons.icon_color('about') }}">
+        <div class="stat-grid">
+          <div class="stat-tile"><span class="stat-label">Race</span><span class="stat-value">{{ doc.demographics.race or '—' }}</span></div>
+          <div class="stat-tile"><span class="stat-label">Ethnicity</span><span class="stat-value">{{ doc.demographics.ethnicity or '—' }}</span></div>
+          <div class="stat-tile"><span class="stat-label">Marital Status</span><span class="stat-value">{{ doc.demographics.marital_status or '—' }}</span></div>
+          {% if doc.demographics.guardian %}<div class="stat-tile"><span class="stat-label">Guardian</span><span class="stat-value">{{ doc.demographics.guardian }}</span></div>{% endif %}
+          <div class="stat-tile stat-wide"><span class="stat-label">Address</span><span class="stat-value">{{ doc.demographics.addresses | join(' | ') or '—' }}</span></div>
+          <div class="stat-tile stat-wide"><span class="stat-label">Phone / Contact</span><span class="stat-value">{{ doc.demographics.telecoms | join(' | ') or '—' }}</span></div>
+        </div>
+      </div>
+    </div>
+
+    {% if doc.participants %}
+    <div class="portal-card reveal-card" id="careteam-anchor" data-icon="providers">
+      <div class="portal-card-head" style="--badge-color: {{ icons.icon_color('providers') }}">
+        <span class="portal-badge">{{ icons.icon('providers') }}</span>
+        <h3 onclick="toggleSection('careteam')"><span class="toggle-icon" id="careteam-icon">▾</span> Care Team <span class="emoji-accent">{{ icons.icon_emoji('providers') }}</span></h3>
+        <span class="count-tag">{{ doc.participants | length }}</span>
+        <button type="button" class="card-close" title="Hide this card" aria-label="Hide this card" onclick="hideCard('careteam-anchor')">&times;</button>
+      </div>
+      <div class="section-body open" id="careteam" style="--badge-color: {{ icons.icon_color('providers') }}">
+        <div class="table-scroll">
+        <table class="narrative-table">
+          <thead><tr><th>Role</th><th>Name</th><th>Organization</th></tr></thead>
+          <tbody>
+            {% for p in doc.participants %}
+            <tr><td><span class="role-pill">{{ p.role }}</span></td><td>{{ p.name or '—' }}</td><td>{{ p.organization or '—' }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% for section in doc.sections %}
+      {{ render_section(section, 'sec-' ~ loop.index) }}
+    {% endfor %}
+  </div>
+
+  <button type="button" class="toc-toggle-btn" id="toc-toggle-btn" title="Show/hide Table of Contents">
+    <span class="emoji-accent">&#128209;</span> Contents
+  </button>
+
+  <aside class="toc-panel" id="toc-panel" data-lenis-prevent>
+    <div class="toc-header">
+      <span><span class="emoji-accent">&#128209;</span> Table of Contents</span>
+      <button type="button" class="toc-close-btn" id="toc-close-btn" title="Hide Table of Contents" aria-label="Hide Table of Contents">&times;</button>
+    </div>
+    <div class="toc-list" id="toc-list">
+      <div class="toc-row" data-target="about-anchor">
+        <button type="button" class="toc-vis" title="Show/hide this section" aria-label="Show or hide this section" aria-pressed="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+        <span class="toc-label">{{ icons.icon('about') }}About This Patient</span>
+        <span class="toc-drag" title="Drag to reorder">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>
+        </span>
+      </div>
+      {% if doc.participants %}
+      <div class="toc-row" data-target="careteam-anchor">
+        <button type="button" class="toc-vis" title="Show/hide this section" aria-label="Show or hide this section" aria-pressed="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+        <span class="toc-label">{{ icons.icon('providers') }}Care Team</span>
+        <span class="toc-drag" title="Drag to reorder">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>
+        </span>
+      </div>
+      {% endif %}
+      {% for section in doc.sections %}
+      <div class="toc-row" data-target="sec-{{ loop.index }}-anchor">
+        <button type="button" class="toc-vis" title="Show/hide this section" aria-label="Show or hide this section" aria-pressed="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+        <span class="toc-label">{{ icons.icon(section.icon) }}{{ section.friendly_title }}</span>
+        <span class="toc-drag" title="Drag to reorder">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="toc-actions">
+      <button type="button" class="toc-action-btn" id="toc-restore">&#8635; Restore original order</button>
+      <button type="button" class="toc-action-btn" id="toc-showall">&#128065; Show all</button>
+      <button type="button" class="toc-action-btn" id="toc-collapseall">&#8645; Collapse/Expand all</button>
+    </div>
+  </aside>
+</div>
+</div>
+
+<script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+(function () {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let lenisInstance = null;
+  if (!reducedMotion && window.Lenis) {
+    try {
+      lenisInstance = new Lenis({ duration: 1.05, smoothWheel: true });
+      function raf(time) { lenisInstance.raf(time); requestAnimationFrame(raf); }
+      requestAnimationFrame(raf);
+    } catch (err) { console.debug('Smooth scroll skipped:', err); }
+  }
+
+  // ---- Table of Contents drawer: toggle open/closed, docked right ----
+  const tocPanel = document.getElementById('toc-panel');
+  const tocToggleBtn = document.getElementById('toc-toggle-btn');
+  const tocCloseBtn = document.getElementById('toc-close-btn');
+  let tocUserToggled = false;
+  tocToggleBtn.addEventListener('click', () => { tocUserToggled = true; tocPanel.classList.toggle('toc-hidden'); });
+  tocCloseBtn.addEventListener('click', () => { tocUserToggled = true; tocPanel.classList.add('toc-hidden'); });
+  // Visible on first load so it's discoverable, then auto-hides itself once
+  // -- after that it's entirely manual (open/close via the buttons above),
+  // and never auto-hides again even if the user reopens it.
+  setTimeout(() => {
+    if (!tocUserToggled) tocPanel.classList.add('toc-hidden');
+  }, 2500);
+
+  // The TOC drawer stays open alongside the page (it's not a modal), so
+  // Lenis can't just be paused while it's open the way it is for the
+  // timeline -- that would freeze the main page too. Instead, scroll the
+  // panel manually on wheel and stop the event there, the same fix in
+  // effect but scoped to just this element.
+  tocPanel.addEventListener('wheel', (e) => {
+    const atTop = tocPanel.scrollTop <= 0 && e.deltaY < 0;
+    const atBottom = tocPanel.scrollTop + tocPanel.clientHeight >= tocPanel.scrollHeight - 1 && e.deltaY > 0;
+    if (atTop || atBottom) return; // let it bubble so overscroll doesn't get stuck
+    tocPanel.scrollTop += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
+
+  // ---- resizable table columns ----
+  // table-layout:fixed keeps every column inside the table (nothing gets
+  // clipped), but that also means the split between columns is fixed --
+  // this lets a user drag a header's right edge to reclaim width from one
+  // column and give it to another, so the table can be shaped to fit.
+  function makeColumnsResizable(table) {
+    const ths = table.querySelectorAll('thead th');
+    if (ths.length < 2) return;
+    ths.forEach((th, i) => {
+      if (i === ths.length - 1) return; // last column just fills what's left
+      const handle = document.createElement('span');
+      handle.className = 'col-resize-handle';
+      th.appendChild(handle);
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startWidth = th.offsetWidth;
+        handle.setPointerCapture(e.pointerId);
+        handle.classList.add('resizing');
+        const onMove = (ev) => {
+          th.style.width = Math.max(50, startWidth + (ev.clientX - startX)) + 'px';
+        };
+        const onUp = () => {
+          handle.classList.remove('resizing');
+          handle.removeEventListener('pointermove', onMove);
+        };
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onUp, { once: true });
+      });
+    });
+  }
+  document.querySelectorAll('table.narrative-table').forEach(makeColumnsResizable);
+
+  // ---- give table-bearing cards the full card width ----
+  // A narrow masonry column (~320px) forces multi-column tables into
+  // unreadable, clipped-looking wrapping. Cards that contain a real data
+  // table break out of the column flow entirely so the table gets the
+  // room it needs and nothing is cut off or hidden behind a scrollbar.
+  // Only wide tables (many columns, e.g. Visit History / Referrals) need
+  // this -- a short 3-column table like Care Team reads fine narrow and
+  // should stay side-by-side with other cards instead of forcing a big
+  // empty gap next to it.
+  document.querySelectorAll('.portal-card').forEach(card => {
+    const needsFullWidth = Array.from(card.querySelectorAll('table.narrative-table')).some(t => {
+      const row = t.querySelector('thead tr') || t.querySelector('tbody tr');
+      return row && row.children.length > 3;
+    });
+    if (needsFullWidth) card.classList.add('has-table');
+  });
+
+  // ---- resizable cards: sideways (width) and bottom-to-top (height) ----
+  // A dedicated handle per edge instead of relying on the browser's single
+  // corner handle -- drag the right edge to widen/narrow, the bottom edge
+  // to grow/shrink downward, or the top edge to grow/shrink upward.
+  function addCardResize(card) {
+    const mkHandle = (cls) => {
+      const h = document.createElement('span');
+      h.className = 'card-resize-handle ' + cls;
+      card.appendChild(h);
+      return h;
+    };
+    const right = mkHandle('crh-right');
+    const bottom = mkHandle('crh-bottom');
+    const top = mkHandle('crh-top');
+    const corner = mkHandle('crh-corner');
+
+    function drag(handle, onMove) {
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        handle.classList.add('resizing');
+        card.classList.add('card-resizing');
+        const start = {
+          x: e.clientX, y: e.clientY,
+          width: card.offsetWidth, height: card.offsetHeight,
+          marginTop: parseFloat(getComputedStyle(card).marginTop) || 0,
+        };
+        const move = (ev) => onMove(ev, start);
+        const up = () => {
+          handle.classList.remove('resizing');
+          card.classList.remove('card-resizing');
+          handle.removeEventListener('pointermove', move);
+          if (typeof saveLayout === 'function') saveLayout();
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', up, { once: true });
+      });
+    }
+
+    drag(right, (ev, start) => {
+      const maxWidth = portalMain.clientWidth;
+      card.style.width = Math.max(240, Math.min(maxWidth, start.width + (ev.clientX - start.x))) + 'px';
+    });
+    drag(bottom, (ev, start) => {
+      card.style.height = Math.max(130, start.height + (ev.clientY - start.y)) + 'px';
+    });
+    drag(top, (ev, start) => {
+      const dy = ev.clientY - start.y; // negative while dragging up
+      const newHeight = Math.max(130, start.height - dy);
+      const appliedChange = newHeight - start.height; // clamped delta actually applied
+      card.style.height = newHeight + 'px';
+      card.style.marginTop = (start.marginTop - appliedChange) + 'px';
+    });
+    drag(corner, (ev, start) => {
+      const maxWidth = portalMain.clientWidth;
+      card.style.width = Math.max(240, Math.min(maxWidth, start.width + (ev.clientX - start.x))) + 'px';
+      card.style.height = Math.max(130, start.height + (ev.clientY - start.y)) + 'px';
+    });
+  }
+  document.querySelectorAll('.portal-card').forEach(addCardResize);
+
+  // ---- scroll reveal ----
+  const revealTargets = document.querySelectorAll('.reveal-card');
+  if (reducedMotion) {
+    revealTargets.forEach(el => el.classList.add('in-view'));
+  } else if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) { entry.target.classList.add('in-view'); io.unobserve(entry.target); }
+      });
+    }, { threshold: 0.06, rootMargin: '0px 0px -30px 0px' });
+    revealTargets.forEach(el => io.observe(el));
+  } else {
+    revealTargets.forEach(el => el.classList.add('in-view'));
+  }
+
+  // ---- vitals sparkline charts ----
+  document.querySelectorAll('.vitals-charts').forEach(container => {
+    const table = container.nextElementSibling && container.nextElementSibling.matches('table.narrative-table')
+      ? container.nextElementSibling
+      : container.parentElement.querySelector('table.narrative-table');
+    if (!table) return;
+    const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+    const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
+      Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim())
+    );
+    if (!rows.length) return;
+    const chronological = rows.slice().reverse();
+    const series = [];
+    headers.forEach((header, colIndex) => {
+      const lower = header.toLowerCase();
+      if (colIndex === 0 || lower.includes('date')) return;
+      const values = chronological.map(r => r[colIndex] || '');
+      if (values.some(v => v.includes('/') && /^\d+\/\d+$/.test(v))) {
+        series.push({ label: header + ' (systolic)', values: values.map(v => parseFloat(v.split('/')[0])) });
+        series.push({ label: header + ' (diastolic)', values: values.map(v => parseFloat(v.split('/')[1])) });
+      } else {
+        const nums = values.map(v => parseFloat(v));
+        if (nums.every(n => !isNaN(n))) series.push({ label: header, values: nums });
+      }
+    });
+    if (!series.length) return;
+    const W = 220, H = 56, PAD = 4;
+    const strip = document.createElement('div');
+    strip.className = 'chart-strip';
+    series.forEach(s => {
+      const valid = s.values.filter(v => !isNaN(v));
+      if (valid.length < 2) return;
+      const min = Math.min(...valid), max = Math.max(...valid);
+      const range = (max - min) || 1;
+      const stepX = (W - PAD * 2) / (s.values.length - 1);
+      const points = s.values.map((v, i) => [PAD + i * stepX, PAD + (1 - (v - min) / range) * (H - PAD * 2)]);
+      const path = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+      const last = points[points.length - 1];
+      const first = s.values[0], lastVal = s.values[s.values.length - 1];
+      const trend = lastVal > first ? 'up' : (lastVal < first ? 'down' : 'flat');
+      const card = document.createElement('div');
+      card.className = 'chart-card';
+      card.innerHTML =
+        '<div class="chart-card-head"><span class="chart-label">' + s.label + '</span>' +
+        '<span class="chart-latest">' + lastVal + '<span class="chart-trend trend-' + trend + '"></span></span></div>' +
+        '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" class="sparkline">' +
+        '<path d="' + path + '" class="spark-path"></path>' +
+        '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="3" class="spark-dot"></circle></svg>';
+      strip.appendChild(card);
+    });
+    container.appendChild(strip);
+    if (!reducedMotion) {
+      const chartIo = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.querySelectorAll('.spark-path').forEach(p => {
+              const len = p.getTotalLength();
+              p.style.strokeDasharray = len;
+              p.style.strokeDashoffset = len;
+              p.getBoundingClientRect();
+              p.style.transition = 'stroke-dashoffset 1s ease-out';
+              p.style.strokeDashoffset = '0';
+            });
+            chartIo.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.2 });
+      chartIo.observe(strip);
+    }
+  });
+
+  // ---- Table of Contents: visibility toggle, reorder, collapse-all, restore ----
+  const portalMain = document.getElementById('portal-main');
+  const originalOrder = Array.from(portalMain.children).map(el => el.id);
+  const tocList = document.getElementById('toc-list');
+
+  // ---- remember card order / hidden cards / sizes for this file ----
+  const STORAGE_KEY = 'hrr-layout:' + {{ (filename or doc.document_title or 'record') | tojson }};
+  function saveLayout() {
+    try {
+      const order = Array.from(portalMain.children).map(el => el.id);
+      const hidden = order.filter(id => document.getElementById(id).classList.contains('card-hidden'));
+      const sizes = {};
+      order.forEach(id => {
+        const el = document.getElementById(id);
+        if (el.style.width || el.style.height || el.style.marginTop) {
+          sizes[id] = { width: el.style.width, height: el.style.height, marginTop: el.style.marginTop };
+        }
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ order, hidden, sizes }));
+    } catch (err) { /* localStorage unavailable (private mode etc.) -- just skip persistence */ }
+  }
+
+  window.hideCard = function (targetId) {
+    const card = document.getElementById(targetId);
+    if (card) card.classList.add('card-hidden');
+    const row = tocList.querySelector('.toc-row[data-target="' + targetId + '"]');
+    if (row) {
+      row.classList.add('toc-row-hidden');
+      row.querySelector('.toc-vis').setAttribute('aria-pressed', 'false');
+    }
+    saveLayout();
+  };
+  function showCard(targetId) {
+    const card = document.getElementById(targetId);
+    if (card) card.classList.remove('card-hidden');
+    const row = tocList.querySelector('.toc-row[data-target="' + targetId + '"]');
+    if (row) {
+      row.classList.remove('toc-row-hidden');
+      row.querySelector('.toc-vis').setAttribute('aria-pressed', 'true');
+    }
+    saveLayout();
+  }
+
+  (function applySavedLayout() {
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch (err) { saved = null; }
+    if (!saved) return;
+    (saved.order || []).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) portalMain.appendChild(el);
+    });
+    (saved.order || []).forEach(id => {
+      const row = tocList.querySelector('.toc-row[data-target="' + id + '"]');
+      if (row) tocList.appendChild(row);
+    });
+    (saved.hidden || []).forEach(id => { if (document.getElementById(id)) window.hideCard(id); });
+    Object.entries(saved.sizes || {}).forEach(([id, sz]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (sz.width) el.style.width = sz.width;
+      if (sz.height) el.style.height = sz.height;
+      if (sz.marginTop) el.style.marginTop = sz.marginTop;
+    });
+  })();
+
+  tocList.querySelectorAll('.toc-row').forEach(row => {
+    const targetId = row.dataset.target;
+    row.querySelector('.toc-vis').addEventListener('click', () => {
+      const card = document.getElementById(targetId);
+      if (card && card.classList.contains('card-hidden')) showCard(targetId);
+      else window.hideCard(targetId);
+    });
+    row.querySelector('.toc-label').addEventListener('click', () => {
+      const card = document.getElementById(targetId);
+      if (card) card.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+  });
+
+  // ---- drag-to-reorder (SortableJS) ----
+  // Dragging a TOC row reorders that row's list, then the portal-main cards
+  // are re-appended to match the new TOC order -- same technique "Restore
+  // original order" already used, just driven by drag instead of a click.
+  if (window.Sortable) {
+    Sortable.create(tocList, {
+      handle: '.toc-drag',
+      animation: 150,
+      ghostClass: 'toc-row-ghost',
+      chosenClass: 'toc-row-chosen',
+      dragClass: 'toc-row-drag',
+      onEnd: function () {
+        Array.from(tocList.children).forEach(row => {
+          const card = document.getElementById(row.dataset.target);
+          if (card) portalMain.appendChild(card);
+        });
+        saveLayout();
+      },
+    });
+
+    // Cards can also be grabbed directly by their header and dropped
+    // anywhere else in the stack -- same reorder, just started from the
+    // card itself instead of the TOC row. Whichever list moves, the other
+    // list is re-synced to match so both stay in the same order.
+    Sortable.create(portalMain, {
+      handle: '.portal-card-head',
+      filter: '.card-close, .toggle-icon',
+      preventOnFilter: false,
+      animation: 150,
+      ghostClass: 'card-ghost',
+      chosenClass: 'card-chosen',
+      dragClass: 'card-drag',
+      onEnd: function () {
+        Array.from(portalMain.children).forEach(card => {
+          const row = tocList.querySelector('.toc-row[data-target="' + card.id + '"]');
+          if (row) tocList.appendChild(row);
+        });
+        saveLayout();
+      },
+    });
+  }
+
+  document.getElementById('toc-showall').addEventListener('click', () => {
+    tocList.querySelectorAll('.toc-row').forEach(row => showCard(row.dataset.target));
+  });
+
+  document.getElementById('toc-restore').addEventListener('click', () => {
+    originalOrder.forEach(id => portalMain.appendChild(document.getElementById(id)));
+    originalOrder.forEach(id => {
+      const row = tocList.querySelector('.toc-row[data-target="' + id + '"]');
+      if (row) tocList.appendChild(row);
+    });
+    originalOrder.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.style.width = ''; el.style.height = ''; el.style.marginTop = ''; }
+    });
+    try { localStorage.removeItem(STORAGE_KEY); } catch (err) { /* ignore */ }
+  });
+
+  let allCollapsed = false;
+  document.getElementById('toc-collapseall').addEventListener('click', () => {
+    allCollapsed = !allCollapsed;
+    document.querySelectorAll('.portal-card .section-body').forEach(body => {
+      body.classList.toggle('open', !allCollapsed);
+      const icon = body.parentElement.querySelector('.toggle-icon');
+      if (icon) icon.textContent = allCollapsed ? '▸' : '▾';
+    });
+  });
+
+  // ---- keyboard fallback for reordering (drag is mouse/touch-only) ----
+  // Focus a section's drag handle with Tab, then Arrow Up/Down to move it --
+  // mirrors the drag behavior without needing a pointer.
+  tocList.querySelectorAll('.toc-drag').forEach(handle => {
+    handle.setAttribute('tabindex', '0');
+    handle.setAttribute('role', 'button');
+    handle.setAttribute('aria-label', 'Reorder this section: use the Up and Down arrow keys');
+    handle.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const row = handle.closest('.toc-row');
+      const card = document.getElementById(row.dataset.target);
+      if (e.key === 'ArrowUp') {
+        const prevRow = row.previousElementSibling;
+        const prevCard = card && card.previousElementSibling;
+        if (prevRow) tocList.insertBefore(row, prevRow);
+        if (prevCard) portalMain.insertBefore(card, prevCard);
+      } else {
+        const nextRow = row.nextElementSibling;
+        const nextCard = card && card.nextElementSibling;
+        if (nextCard) portalMain.insertBefore(nextCard, card);
+        if (nextRow) tocList.insertBefore(nextRow, row);
+      }
+      handle.focus();
+      saveLayout();
+    });
+  });
+
+  // ---- quick-jump chips in the patient bar ----
+  document.querySelectorAll('.pb-glance-chip[data-jump]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.jump;
+      const card = id && document.getElementById(id);
+      if (!card) return;
+      if (card.classList.contains('card-hidden')) showCard(id);
+      card.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+  });
+
+  // ---- search across every card, with in-place highlighting ----
+  const searchInput = document.getElementById('record-search');
+  const searchCount = document.getElementById('search-count');
+  const searchClear = document.getElementById('search-clear');
+  let searchMarks = [];
+
+  function clearSearchMarks() {
+    searchMarks.forEach(mark => {
+      const parent = mark.parentNode;
+      if (parent) { parent.replaceChild(document.createTextNode(mark.textContent), mark); parent.normalize(); }
+    });
+    searchMarks = [];
+  }
+
+  function highlightMatches(root, q) {
+    let count = 0;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return node.nodeValue.toLowerCase().includes(q) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    const targets = [];
+    let n;
+    while ((n = walker.nextNode())) targets.push(n);
+    targets.forEach(node => {
+      const text = node.nodeValue;
+      const lower = text.toLowerCase();
+      const frag = document.createDocumentFragment();
+      let last = 0, idx;
+      while ((idx = lower.indexOf(q, last)) !== -1) {
+        frag.appendChild(document.createTextNode(text.slice(last, idx)));
+        const mark = document.createElement('mark');
+        mark.className = 'search-hit';
+        mark.textContent = text.slice(idx, idx + q.length);
+        frag.appendChild(mark);
+        searchMarks.push(mark);
+        count++;
+        last = idx + q.length;
+      }
+      frag.appendChild(document.createTextNode(text.slice(last)));
+      node.parentNode.replaceChild(frag, node);
+    });
+    return count;
+  }
+
+  function runSearch(query) {
+    clearSearchMarks();
+    const q = query.trim().toLowerCase();
+    const cards = Array.from(portalMain.children);
+    if (!q) {
+      cards.forEach(c => c.classList.remove('search-no-match'));
+      searchCount.hidden = true;
+      searchClear.hidden = true;
+      return;
+    }
+    searchClear.hidden = false;
+    let totalHits = 0;
+    cards.forEach(card => {
+      const matches = card.textContent.toLowerCase().includes(q);
+      card.classList.toggle('search-no-match', !matches);
+      if (matches) totalHits += highlightMatches(card, q);
+    });
+    searchCount.hidden = false;
+    searchCount.textContent = totalHits + ' match' + (totalHits === 1 ? '' : 'es');
+  }
+
+  let searchDebounce;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => runSearch(searchInput.value), 150);
+  });
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    runSearch('');
+    searchInput.focus();
+  });
+
+  // ---- print / save as PDF ----
+  document.getElementById('print-btn').addEventListener('click', () => window.print());
+
+  // ---- timeline: every dated table row across the document, newest first ----
+  const timelinePanel = document.getElementById('timeline-panel');
+  const timelineList = document.getElementById('timeline-list');
+  function closeTimelineOnOutsideClick(e) {
+    if (!timelinePanel.contains(e.target) && e.target.id !== 'timeline-btn' && !document.getElementById('timeline-btn').contains(e.target)) {
+      closeTimeline();
+    }
+  }
+
+  function parseLooseDate(str) {
+    if (!str) return null;
+    const m = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function buildTimeline() {
+    const events = [];
+    document.querySelectorAll('.portal-card').forEach(card => {
+      if (card.id === 'about-anchor' || card.id === 'careteam-anchor') return;
+      if (card.classList.contains('card-hidden')) return; // respect the user's own hide action
+      const titleEl = card.querySelector('.portal-card-head h3');
+      const title = titleEl ? titleEl.textContent.replace(/[▸▾]/g, '').trim() : 'Record';
+      const head = card.querySelector('.portal-card-head');
+      const badgeColor = head ? getComputedStyle(head).getPropertyValue('--badge-color').trim() || '#2E75B6' : '#2E75B6';
+      card.querySelectorAll('table.narrative-table').forEach(table => {
+        const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+        const dateIdx = headers.findIndex(h => /date/i.test(h));
+        if (dateIdx === -1) return;
+        table.querySelectorAll('tbody tr').forEach(tr => {
+          const cells = Array.from(tr.querySelectorAll('td'));
+          if (!cells[dateIdx]) return;
+          const dateText = cells[dateIdx].textContent.trim();
+          const date = parseLooseDate(dateText);
+          if (!date) return;
+          // Label each value with its column header instead of a blind
+          // "—"-joined blob of numbers -- a vitals row of bare numbers
+          // ("145/83 — 92 — 13...") is meaningless without knowing which
+          // number is which.
+          const summary = cells
+            .map((td, i) => {
+              if (i === dateIdx) return null;
+              const value = td.textContent.trim();
+              if (!value) return null;
+              const label = headers[i];
+              return label ? (label + ': ' + value) : value;
+            })
+            .filter(Boolean)
+            .join(' • ');
+          events.push({ date, dateText, title, badgeColor, summary });
+        });
+      });
+    });
+    events.sort((a, b) => b.date - a.date);
+    timelineList.innerHTML = '';
+    if (!events.length) {
+      timelineList.innerHTML = '<div class="timeline-empty">No dated entries were found to place on a timeline.</div>';
+      return;
+    }
+    events.forEach(ev => {
+      const item = document.createElement('div');
+      item.className = 'timeline-item';
+      const dateDiv = document.createElement('div');
+      dateDiv.className = 'timeline-date';
+      dateDiv.textContent = ev.dateText;
+      const bodyDiv = document.createElement('div');
+      bodyDiv.className = 'timeline-body';
+      const tag = document.createElement('div');
+      tag.className = 'timeline-section-tag';
+      tag.style.setProperty('--badge-color', ev.badgeColor);
+      tag.textContent = ev.title;
+      bodyDiv.appendChild(tag);
+      bodyDiv.appendChild(document.createTextNode(ev.summary));
+      item.appendChild(dateDiv);
+      item.appendChild(bodyDiv);
+      timelineList.appendChild(item);
+    });
+  }
+
+  function openTimeline() {
+    buildTimeline();
+    timelinePanel.hidden = false;
+    // Lenis intercepts wheel scrolling for the whole page by default; that
+    // interception is exactly what was blocking scroll (and, by grabbing
+    // the wheel/pointer handling globally, the native scrollbar drag too)
+    // inside this fixed panel. Stopping it while the panel is open hands
+    // scrolling back to the browser entirely; starting it again on close
+    // restores the smooth page scroll.
+    if (lenisInstance) lenisInstance.stop();
+    document.body.style.overflow = 'hidden';
+    // Outside-click-to-close via a plain listener instead of a full-screen
+    // backdrop element -- no invisible layer sits on top of the panel that
+    // could ever intercept its scroll or clicks.
+    setTimeout(() => document.addEventListener('click', closeTimelineOnOutsideClick), 0);
+  }
+  function closeTimeline() {
+    timelinePanel.hidden = true;
+    if (lenisInstance) lenisInstance.start();
+    document.body.style.overflow = '';
+    document.removeEventListener('click', closeTimelineOnOutsideClick);
+  }
+  document.getElementById('timeline-btn').addEventListener('click', openTimeline);
+  document.getElementById('timeline-close-btn').addEventListener('click', closeTimeline);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !timelinePanel.hidden) closeTimeline();
+  });
+
+  // ---- heuristic flags: past-due follow-ups, out-of-range lab values ----
+  // Plain text/number matching only, not a clinical decision engine --
+  // flagged rows are a prompt to look closer, never a diagnosis.
+  (function flagOverdueAndAbnormal() {
+    const today = new Date();
+    document.querySelectorAll('table.narrative-table').forEach(table => {
+      const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+      const dueIdx = headers.findIndex(h => /target date|due date|follow.?up date/i.test(h));
+      const rangeIdx = headers.findIndex(h => /reference range|normal range|ref\.?\s*range/i.test(h));
+      const valueIdx = headers.findIndex(h => /^(result|value)s?$/i.test(h));
+      table.querySelectorAll('tbody tr').forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll('td'));
+        if (dueIdx !== -1 && cells[dueIdx]) {
+          const d = parseLooseDate(cells[dueIdx].textContent.trim());
+          if (d && d < today) tr.classList.add('row-overdue');
+        }
+        if (rangeIdx !== -1 && valueIdx !== -1 && cells[rangeIdx] && cells[valueIdx]) {
+          const rangeMatch = cells[rangeIdx].textContent.match(/(-?\d+(\.\d+)?)\s*-\s*(-?\d+(\.\d+)?)/);
+          const value = parseFloat(cells[valueIdx].textContent);
+          if (rangeMatch && !isNaN(value)) {
+            const lo = parseFloat(rangeMatch[1]), hi = parseFloat(rangeMatch[3]);
+            if (value < lo || value > hi) tr.classList.add('row-abnormal');
+          }
+        }
+      });
+    });
+  })();
+
+  // ---- heuristic flag: medication name text overlaps a listed allergy ----
+  (function flagAllergyMedicationOverlap() {
+    const cards = Array.from(document.querySelectorAll('.portal-card'));
+    const allergyCard = cards.find(c => c.dataset.icon === 'allergy');
+    const medCard = cards.find(c => c.dataset.icon === 'medication');
+    if (!allergyCard || !medCard) return;
+    const allergyNames = Array.from(allergyCard.querySelectorAll('tbody tr td:first-child'))
+      .map(td => td.textContent.trim().toLowerCase())
+      .filter(name => name.length > 3);
+    if (!allergyNames.length) return;
+    let hit = null;
+    medCard.querySelectorAll('tbody tr').forEach(tr => {
+      const medText = tr.textContent.toLowerCase();
+      allergyNames.forEach(name => {
+        if (medText.includes(name)) { tr.classList.add('row-abnormal'); hit = hit || name; }
+      });
+    });
+    if (hit) {
+      const banner = document.createElement('div');
+      banner.className = 'heuristic-banner';
+      banner.textContent = '⚠ A medication name below appears to overlap with a listed allergy ("' + hit + '"). ' +
+        'This is a plain text match, not a clinical safety check — please verify with a pharmacist or clinician.';
+      const body = medCard.querySelector('.section-body');
+      if (body) body.insertBefore(banner, body.firstChild);
+    }
+  })();
+})();
+</script>
+{% endblock %}
