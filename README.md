@@ -2,10 +2,20 @@
 
 Built by **Elanchezhiyan P** ([codebyelan.in](https://codebyelan.in)).
 
+**Live demo:** [medparser.codebyelan.in](https://medparser.codebyelan.in)
+*(demo only — please don't upload real patient data; use one of the
+sample files in `samples/` instead)*
+
 A standalone Flask web app (separate from the Healthie sync tool elsewhere
 in this repo). Upload a clinical document, and it auto-detects the format
 and lays out everything it contains in a plain-language, non-technical
 view — no prior knowledge of the file format required.
+
+**Privacy:** nothing you upload is stored, logged, or written to disk.
+Each file is parsed entirely in memory for the single request that renders
+it, then discarded. The only thing remembered across visits is a cookie
+holding the *filename* and *when* you last viewed something (used for the
+"welcome back" banner) — never the file's contents.
 
 ## Supported formats
 
@@ -67,7 +77,22 @@ python app.py
 ```
 
 Then open **http://localhost:5057** and upload a file (or try one of the
-samples in `samples/`).
+samples in `samples/`). Uploads are capped at 4 MB (matching what the
+Vercel deployment's own platform limit allows).
+
+Optional environment variables:
+
+| Variable     | Purpose                                                             | Default                    |
+| ------------ | -------------------------------------------------------------------- | --------------------------- |
+| `SECRET_KEY` | Signs cookies/flash messages. Set a fixed value in production so signed cookies survive a redeploy. | random, regenerated per process |
+| `DEBUG`      | Set to `1` to run the local dev server with Flask's debugger. Never set this in a public deployment. | off |
+
+## Deploying
+
+Live at [medparser.codebyelan.in](https://medparser.codebyelan.in) on
+Vercel, which auto-detects the top-level `app.py` / `app` object as a
+Python (Flask) app with no extra config needed. If you deploy your own
+copy, set `SECRET_KEY` in the platform's environment variables.
 
 ## Project structure
 

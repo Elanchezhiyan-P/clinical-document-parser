@@ -37,6 +37,18 @@
       <span class="format-badge-pill">XML &middot; FHIR</span>
       <span class="format-badge-pill">.hl7 &middot; HL7 v2</span>
     </div>
+
+    {% if samples %}
+    <div class="sample-tryout reveal" style="--delay:4">
+      <a href="{{ url_for('sample', key='ccda') }}" class="btn-sample">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        Try a sample record &mdash; no upload needed
+      </a>
+      <span class="sample-alt">or see a sample
+        {% for key, entry in samples.items() if key != 'ccda' %}<a href="{{ url_for('sample', key=key) }}">{{ entry[1] }}</a>{{ ', ' if not loop.last else '' }}{% endfor %}
+      </span>
+    </div>
+    {% endif %}
   </div>
 
   <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" id="upload-form" class="landing-right reveal" style="--delay:2">

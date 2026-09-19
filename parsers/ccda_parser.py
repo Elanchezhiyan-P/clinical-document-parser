@@ -6,7 +6,7 @@ specifically coded for, this walks *every* <section> in the document and
 source document is silently dropped -- including sections this codebase has
 never seen before.
 """
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from datetime import date
 
 def _format_date(raw):

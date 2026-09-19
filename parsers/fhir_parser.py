@@ -5,7 +5,7 @@ resource types, so the UI can show a friendly headline while still exposing
 every field underneath.
 """
 import json
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
 
 def _local(tag):
